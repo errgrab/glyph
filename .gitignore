@@ -1,1 +1,7 @@
-vm
+# Build artifacts
+codex
+codex-debug
+test
+
+# Optional: uncomment to ignore bytecode files
+# *.sigil

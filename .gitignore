@@ -1,7 +1,2 @@
-# Build artifacts
-codex
-codex-debug
+example
 test
-
-# Optional: uncomment to ignore bytecode files
-# *.sigil

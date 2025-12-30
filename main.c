@@ -10,7 +10,7 @@ int main(void) {
     glyph_init(&vm, mem, sizeof(mem));
 
     /* Load program: a=5, b=3, c=a+b */
-    uint8_t prog[] = ":ad5 :bd3 +cab";
+    uint8_t prog[] = ":ax5 :bx3 +cab";
     memcpy(mem, prog, sizeof(prog));
 
     glyph_run(&vm);

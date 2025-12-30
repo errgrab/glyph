@@ -6,103 +6,116 @@
 #define GLYPH_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 
+typedef uint8_t  u8;
+typedef uint32_t u32;
+
 typedef struct {
-    uint8_t  *mem;
-    uint32_t  size;
-    uint32_t  reg[128];
-    uint32_t  port[256];
-    int       halt;
+    u8 *mem;
+	u8  sp;
+    u32 size;
+    u32 reg[128];
+	u32 stk[256];
+    u32 port[256];
+    bool halt;
 } Glyph;
 
-#define glyph_pc(vm)  ((vm)->reg['.'])
-#define glyph_sp(vm)  ((vm)->reg[','])
-
-void glyph_init(Glyph *vm, uint8_t *mem, uint32_t size);
+void glyph_init(Glyph *vm, u8 *mem, u32 size);
 void glyph_run(Glyph *vm);
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────────────────────────────────── */
 #ifdef GLYPH_IMPL
 
 #define R(x)  vm->reg[(x) & 127]
 #define M(x)  vm->mem[(x) & (vm->size - 1)]
 #define PC    R('.')
+#define SP    R(',')
 
-static uint8_t fetch(Glyph *vm) {
-    while (PC < vm->size && isspace(vm->mem[PC])) PC++;
+static inline u8 N(Glyph *vm) {
     return (PC < vm->size) ? vm->mem[PC++] : (vm->halt = 1, 0);
 }
 
+#include <stdio.h>
 void glyph_run(Glyph *vm) {
-    uint8_t op, a, b, c;
+    u8 op, a, b, c;
     while (!vm->halt) {
-        op = fetch(vm);
+        op = N(vm);
         if (vm->halt) break;
 
         switch (op) {
         /* Arithmetic: +abc -abc *abc /abc %abc */
-        case '+': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) + R(c); break;
-        case '-': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) - R(c); break;
-        case '*': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) * R(c); break;
-        case '/': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(c) ? R(b)/R(c) : 0; break;
-        case '%': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(c) ? R(b)%R(c) : 0; break;
+        case '+': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) + R(c); break;
+        case '-': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) - R(c); break;
+        case '*': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) * R(c); break;
+        case '/': a=N(vm); b=N(vm); c=N(vm); R(a) = R(c) ? R(b)/R(c) : 0; break;
+        case '%': a=N(vm); b=N(vm); c=N(vm); R(a) = R(c) ? R(b)%R(c) : 0; break;
 
         /* Bitwise: &abc |abc ^abc ~ab <abc >abc */
-        case '&': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) & R(c); break;
-        case '|': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) | R(c); break;
-        case '^': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) ^ R(c); break;
-        case '~': a=fetch(vm); b=fetch(vm); R(a) = ~R(b); break;
-        case '<': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) << R(c); break;
-        case '>': a=fetch(vm); b=fetch(vm); c=fetch(vm); R(a) = R(b) >> R(c); break;
+        case '&': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) & R(c); break;
+        case '|': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) | R(c); break;
+        case '^': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) ^ R(c); break;
+        case '~': a=N(vm); b=N(vm); R(a) = ~R(b); break;
+        case '<': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) << R(c); break;
+        case '>': a=N(vm); b=N(vm); c=N(vm); R(a) = R(b) >> R(c); break;
 
         /* Load: :agX :axF :a.b */
         case ':':
-            a = fetch(vm); b = fetch(vm);
-            if      (b == 'g') R(a) = fetch(vm);
-            else if (b == 'x')  { c = fetch(vm); R(a) = (c <= '9') ? c - '0' : (c | 32) - 'a' + 10; }
-            else if (b == '.')  R(a) = R(fetch(vm));
+            a = N(vm); b = N(vm);
+            if      (b == 'g') R(a) = N(vm);
+            else if (b == 'x') { c = N(vm); R(a) = (c <= '9') ? c - '0' : (c | 32) - 'a' + 10; }
+            else if (b == '.') R(a) = R(N(vm));
             break;
 
         /* Memory: @ab !ab */
-        case '@': a=fetch(vm); b=fetch(vm); R(a) = M(R(b)); break;
-        case '!': a=fetch(vm); b=fetch(vm); M(R(a)) = R(b); break;
+        case '@': a=N(vm); b=N(vm); R(a) = M(R(b)); break;
+        case '!': a=N(vm); b=N(vm); M(R(a)) = R(b); break;
 
-        /* Ports: (ab )ab */
-        case '(': a=fetch(vm); b=fetch(vm); R(a) = vm->port[R(b) & 255]; break;
-        case ')': a=fetch(vm); b=fetch(vm); vm->port[R(a) & 255] = R(b); break;
+        /* Ports: #<ab #>ab */
+        case '#':
+            a=N(vm); b=N(vm); c=N(vm);
+            if      (a == '<') R(b) = vm->port[R(c) & 255];
+            else if (a == '>') vm->port[R(b) & 255] = R(c);
+            break;
 
         /* Control: .a ?=ab ;a , */
-        case '.': a=fetch(vm); PC = R(a); break;
+        case '.': a=N(vm); PC = R(a); break;
         case '?':
-            a=fetch(vm); b=fetch(vm); c=fetch(vm);
+            a=N(vm); b=N(vm); c=N(vm);
             if ((a=='=' && R(b)!=R(c)) || (a=='!' && R(b)==R(c)) ||
                 (a=='>' && R(b)<=R(c)) || (a=='<' && R(b)>=R(c))) PC++;
             break;
         case ';':
-            a = fetch(vm);
-            glyph_sp(vm) -= 4;
-            M(glyph_sp(vm)+0) = PC; M(glyph_sp(vm)+1) = PC >> 8;
-            M(glyph_sp(vm)+2) = PC >> 16; M(glyph_sp(vm)+3) = PC >> 24;
+            a = N(vm);
+            SP -= 4;
+            M(SP+0) = PC; M(SP+1) = PC >> 8;
+            M(SP+2) = PC >> 16; M(SP+3) = PC >> 24;
             PC = R(a);
             break;
         case ',':
-            PC = M(glyph_sp(vm)) | (M(glyph_sp(vm)+1)<<8) |
-                 (M(glyph_sp(vm)+2)<<16) | (M(glyph_sp(vm)+3)<<24);
-            glyph_sp(vm) += 4;
+            PC = M(SP) | (M(SP+1)<<8) |
+                 (M(SP+2)<<16) | (M(SP+3)<<24);
+            SP += 4;
             break;
-
         case 0: vm->halt = 1; break;
-        default: break;
+		case ' ':
+		case '\f':
+		case '\n':
+		case '\v':
+		case '\r':
+		case '\t': break;
+        default: vm->halt = 1; break;
         }
     }
 }
 
-void glyph_init(Glyph *vm, uint8_t *mem, uint32_t size) {
+void glyph_init(Glyph *vm, u8 *mem, u32 size) {
     memset(vm, 0, sizeof(Glyph));
     vm->mem = mem;
     vm->size = size;
+	vm->reg[','] = size;
 }
 
 #undef R

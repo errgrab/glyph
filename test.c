@@ -17,7 +17,7 @@ static void run(const char *prog) {
 }
 
 TEST(arithmetic) {
-    run(":ad5 :bd3 +cab -dab *eab /fab");
+    run(":ax5 :bx3 +cab -dab *eab /fab");
     ASSERT(vm.reg['c'] == 8);
     ASSERT(vm.reg['d'] == 2);
     ASSERT(vm.reg['e'] == 15);
@@ -33,56 +33,43 @@ TEST(bitwise) {
 }
 
 TEST(shifts) {
-    run(":ad4 :bd2 <cab >dab");
+    run(":ax4 :bx2 <cab >dab");
     ASSERT(vm.reg['c'] == 16);
     ASSERT(vm.reg['d'] == 1);
 }
 
 TEST(memory) {
-    uint8_t p[] = {':','a','g',50, ':','b','g',42, '!','a','b', '@','c','a', 0};
-    glyph_init(&vm, mem, sizeof(mem));
-    memcpy(mem, p, sizeof(p));
-    glyph_run(&vm);
-    ASSERT(vm.reg['c'] == 42);
-    ASSERT(mem[50] == 42);
+	run(":ag2 :bg* !ab @ca");
+    ASSERT(vm.reg['c'] == '*');
+    ASSERT(mem['2'] == '*');
 }
 
 TEST(ports) {
-    uint8_t p1[] = {':','a','g',5, ':','b','g',99, ')','a','b', 0};
-    glyph_init(&vm, mem, sizeof(mem));
-    memcpy(mem, p1, sizeof(p1));
-    glyph_run(&vm);
+	run(":ax5 :bgc #>ab");
     ASSERT(vm.port[5] == 99);
-    
-    uint8_t p2[] = {':','a','g',10, '(','b','a', 0};
+	const char *test = ":axa #<ba";
     glyph_init(&vm, mem, sizeof(mem));
     vm.port[10] = 77;
-    memcpy(mem, p2, sizeof(p2));
+    memcpy(mem, test, strlen(test) + 1);
     glyph_run(&vm);
     ASSERT(vm.reg['b'] == 77);
 }
 
 TEST(jump) {
-    uint8_t p[] = {':','j','g',12, '.','j', ':','a','g',1, 0};
-    glyph_init(&vm, mem, sizeof(mem));
-    memcpy(mem, p, sizeof(p));
-    glyph_run(&vm);
+	run(":jxf .j :ax1");
     ASSERT(vm.reg['a'] == 0);  /* skipped */
 }
 
 TEST(conditional) {
-    run(":ad5 :bd5 ?=ab :cd1 :dd2");
+    run(":ax5 :bx5 ?=ab:cx1 :dx2");
     ASSERT(vm.reg['c'] == 1 && vm.reg['d'] == 2);
 
-    run(":ad5 :bd3 ?=ab :cd1");
+    run(":ax5 :bx3 ?=ab:cx1");
     ASSERT(vm.reg['c'] == 0);  /* skipped due to inequality */
 }
 
 TEST(copy) {
-    uint8_t p[] = {':','a','g',42, ':','b','.','a', 0};
-    glyph_init(&vm, mem, sizeof(mem));
-    memcpy(mem, p, sizeof(p));
-    glyph_run(&vm);
+	run(":ag* :b.a");
     ASSERT(vm.reg['b'] == 42);
 }
 

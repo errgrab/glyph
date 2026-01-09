@@ -139,11 +139,11 @@ TEST(copy) {
 }
 
 TEST(labels) {
-	run(".a .b .c .d");
-	ASSERT(vm.r['a'] == 1);
+	run(".a.b.c.d");
+	ASSERT(vm.r['a'] == 2);
 	ASSERT(vm.r['b'] == 4);
-	ASSERT(vm.r['c'] == 7);
-	ASSERT(vm.r['d'] == 10);
+	ASSERT(vm.r['c'] == 6);
+	ASSERT(vm.r['d'] == 8);
 	return 0;
 }
 

@@ -9,6 +9,9 @@ glyph: main.c glyph.h
 test: test.c glyph.h
 	$(CC) $(CFLAGS) test.c -o test
 
+re: clean all
+
 clean:
 	rm -f glyph test
+
 .PHONY: all clean

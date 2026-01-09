@@ -64,6 +64,7 @@ void glyph_eval(Glyph *vm) {
 	u8 op, a, b;
 	while (!vm->halt) {
 		op = N;
+//		printf("op: %c pc: %d acc: %d flg: %d\n", op, R('.'), A, R('?'));
 		if (vm->halt) break;
 		switch (op) {
 		/* NooP */
@@ -116,7 +117,7 @@ void glyph_eval(Glyph *vm) {
 		/* Call: ;a */
 		case ';': vm->s[vm->T++] = R('.'); WR('.', R(N)); break;
 		case '`': case 0: vm->halt = 1; break;
-		default: WR(N, R(op)); break;
+		default: a=N; WR(a, R(op)); break;
 		}
 	}
 }

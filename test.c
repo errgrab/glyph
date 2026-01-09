@@ -2,162 +2,169 @@
 #define GLYPH_IMPL
 #include "glyph.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
 
-#define TEST(name) static void test_##name(void)
-#define RUN(name) printf("%-20s", #name); test_##name(); printf("OK\n")
-#define ASSERT(x) do { if(!(x)) { printf("FAIL: %s\n", #x); return; } } while(0)
+#define TEST(name) static int test_##name(void)
+#define RUN(name) printf("%-20s", #name); if (!test_##name()) {printf("OK\n");}
+#define ASSERT(x) do { if(!(x)) { printf("FAIL: %s\n", #x); return 1; } } while(0)
 
 static Glyph vm;
-static uint8_t mem[256];
-
 static void run(const char *prog) {
-    glyph_init(&vm, mem, sizeof(mem));
-    memcpy(mem, prog, strlen(prog) + 1);
-    glyph_run(&vm);
+	bzero(&vm, sizeof(vm));
+	memcpy(vm.m, prog, strlen(prog) + 1);
+	glyph_eval(&vm);
 }
 
 TEST(arithmetic) {
-    run(":0a5 :0b3 +cab -dab *eab /fab");
-    ASSERT(vm.reg['c'] == 8);
-    ASSERT(vm.reg['d'] == 2);
-    ASSERT(vm.reg['e'] == 15);
-    ASSERT(vm.reg['f'] == 1);
+	run("5=a 3=b +ab=c -ab=d *ab=e /ab=f");
+	ASSERT(vm.r['a'] == 5);
+	ASSERT(vm.r['b'] == 3);
+	ASSERT(vm.r['c'] == 8);
+	ASSERT(vm.r['d'] == 2);
+	ASSERT(vm.r['e'] == 15);
+	ASSERT(vm.r['f'] == 1);
+	return 0;
 }
 
 TEST(bitwise) {
-    run(":0aF :0b7 &cab |dab ^eab ~fa");
-    ASSERT(vm.reg['c'] == 7);
-    ASSERT(vm.reg['d'] == 15);
-    ASSERT(vm.reg['e'] == 8);
-    ASSERT(vm.reg['f'] == ~15u);
+	run("15=a 7=b &ab=c |ab=d ^ab=e ~a=f");
+	ASSERT(vm.r['a'] == 15);
+	ASSERT(vm.r['b'] == 7);
+	ASSERT(vm.r['c'] == 7);
+	ASSERT(vm.r['d'] == 15);
+	ASSERT(vm.r['e'] == 8);
+	ASSERT(vm.r['f'] == (uint8_t)~15u);
+	return 0;
 }
 
 TEST(shifts) {
-    run(":0a4 :0b2 <cab >dab");
-    ASSERT(vm.reg['c'] == 16);
-    ASSERT(vm.reg['d'] == 1);
+	run("4=a 2<a=c 2>a=d");
+	ASSERT(vm.r['a'] == 4);
+	ASSERT(vm.r['c'] == 16);
+	ASSERT(vm.r['d'] == 1);
+	return 0;
 }
 
 TEST(memory) {
-    run(":'a2 :'b* @>ab @<ca");
-    ASSERT(vm.reg['c'] == '*');
-    ASSERT(mem['2'] == '*');
+	run("'*=b '2@>b@<c");
+	ASSERT(vm.r['c'] == '*');
+	ASSERT(vm.m['2'] == '*');
+	return 0;
 }
 
 TEST(ports) {
-    run(":0a5 :'bc #>ab");
-    ASSERT(vm.port[5] == 99);
-    const char test[] = ":0aa #<ba";
-    glyph_init(&vm, mem, sizeof(mem));
-    vm.port[10] = 77;
-    memcpy(mem, test, sizeof(test));
-    glyph_run(&vm);
-    ASSERT(vm.reg['b'] == 77);
+	run("'c=b 5#>b");
+	ASSERT(vm.p[5] == 99);
+	bzero(&vm, sizeof(vm));
+	const char test[] = "10#<b";
+	vm.p[10] = 77;
+	memcpy(vm.m, test, sizeof(test));
+	glyph_eval(&vm);
+	ASSERT(vm.r['b'] == 77);
+	return 0;
+}
+
+TEST(stack) {
+	run("34=, 35=, +,,=a");
+	ASSERT(vm.r['a'] == 69);
+	return 0;
 }
 
 TEST(jump) {
-    /* Unconditional forward skip: {L skips to }L but saves L=PC */
-    run("{E :0a9 }E :0a1");
-    ASSERT(vm.reg['a'] == 1);  /* skipped over :0a9 */
-    ASSERT(vm.reg['E'] == 2);  /* E captured the skip body address */
-}
-
-TEST(jump_then_execute) {
-    /* {L skips and saves, then ..L jumps back to execute it */
-    /* First pass: a=0, skip [=S, execute ..E to jump back */
-    /* Inside E: set r=9, a=1, fall through }E */
-    /* Second pass: a=1, i=1, equal, skip [=S over ..E, end */
-    run(":0a0 :0i1 {E :0r9 :0a1 }E ?ai [=S ..E ]S");
-    ASSERT(vm.reg['r'] == 9);
-    ASSERT(vm.reg['a'] == 1);
+	run("13=a a. 34=b 35=a +ab=c");
+	ASSERT(vm.r['c'] != 69);
+	ASSERT(vm.r['b'] == 0);
+	ASSERT(vm.r['a'] == 35);
+	return 0;
 }
 
 TEST(backward_jump) {
-    /* Backward jump with label: loop until counter equals 1 */
-    run(":0c3 :0i1 'L -cci ?ci .!L :0r1");
-    ASSERT(vm.reg['c'] == 1);
-    ASSERT(vm.reg['r'] == 1);
+	run("1=c +bc=b 2?=b 23:. z. 10=z +zb=b");
+	ASSERT(vm.r['z'] == 10);
+	ASSERT(vm.r['b'] == 12);
+	return 0;
 }
 
 TEST(conditional_eq) {
-    /* [=S skips to ]S if equal */
-    run(":0a5 :0b5 ?ab [=S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* skipped :0r9 because a==b */
-
-    run(":0a5 :0b3 ?ab [=S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* didn't skip, r was set to 9 then 1 */
+	run("5=a 5?=a 1=r 9:r");
+	ASSERT(vm.r['r'] == 9);
+	run("5=a 3?=b 1=r 9:r");
+	ASSERT(vm.r['r'] == 1);
+	return 0;
 }
 
 TEST(conditional_neq) {
-    /* [!S skips to ]S if not equal */
-    run(":0a5 :0b3 ?ab [!S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* skipped :0r9 because a!=b */
-
-    run(":0a5 :0b5 ?ab [!S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* didn't skip, r was 9 then 1 */
+	run("5=a 3?!a 1=r 9:r");
+	ASSERT(vm.r['r'] == 9);
+	run("5=a 5?!a 1=r 9:r");
+	ASSERT(vm.r['r'] == 1);
+	return 0;
 }
 
 TEST(conditional_gt) {
-    /* [>S skips to ]S if greater */
-    run(":0a5 :0b3 ?ab [>S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* skipped because 5>3 */
-
-    run(":0a3 :0b5 ?ab [>S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* didn't skip */
+	run("3=a 5?>a 1=r 9:r");
+	ASSERT(vm.r['r'] == 9);
+	run("5=a 3?>a 1=r 9:r");
+	ASSERT(vm.r['r'] == 1);
+	return 0;
 }
 
 TEST(conditional_lt) {
-    /* [<S skips to ]S if less */
-    run(":0a3 :0b5 ?ab [<S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* skipped because 3<5 */
-
-    run(":0a5 :0b3 ?ab [<S :0r9 ]S :0r1");
-    ASSERT(vm.reg['r'] == 1);  /* didn't skip */
+	run("5=a 3?<a 1=r 9:r");
+	ASSERT(vm.r['r'] == 9);
+	run("3=a 5?<a 1=r 9:r");
+	ASSERT(vm.r['r'] == 1);
+	return 0;
 }
 
 TEST(call_return) {
-    /* {F sets r[F]=PC and skips to }F, ;F calls to r[F] */
-    /* func F: r=5, return. main: set r=1, call F, set s=r+1 */
-    run("{F :0r5 , }F :0r1 ;F :0i1 +sri");
-    ASSERT(vm.reg['r'] == 5);  /* F set r=5 */
-    ASSERT(vm.reg['s'] == 6);  /* s=r+i=5+1=6 */
+	run("12=. 5=r ,. 1=r 5=f ;f 1=i +ri=s");
+	ASSERT(vm.r['r'] == 5);
+	ASSERT(vm.r['s'] == 6);
+	return 0;
 }
 
 TEST(nested_calls) {
-    /* Two functions: F sets r=3, G calls F then adds 1 */
-    run("{F :0r3 , }F {G ;F :0i1 +rri , }G :0r0 ;G");
-    ASSERT(vm.reg['r'] == 4);  /* G: call F (r=3), r+=1 (r=4) */
+	/* Two functions: F sets r=3, G calls F then adds 1 */
+	run("32=. 3=r ,. 5=f ;f 1=i +ri=r ,. 0=r 12=g ;g");
+	ASSERT(vm.r['r'] == 4);  /* G: call F (r=3), r+=1 (r=4) */
+	return 0;
 }
 
 TEST(copy) {
-    run(":'a* :.ba");
-    ASSERT(vm.reg['b'] == 42);
+	run("'*=a ab");
+	ASSERT(vm.r['b'] == 42);
+	return 0;
 }
 
 TEST(labels) {
-    /* Test 'a label instruction: a = PC */
-    run("'L :0a5");
-    ASSERT(vm.reg['L'] == 2);  /* label captured PC after 'L */
+	run(".a .b .c .d");
+	ASSERT(vm.r['a'] == 1);
+	ASSERT(vm.r['b'] == 4);
+	ASSERT(vm.r['c'] == 7);
+	ASSERT(vm.r['d'] == 10);
+	return 0;
 }
 
 int main(void) {
-    printf("Glyph VM Tests\n==============\n");
-    RUN(arithmetic);
-    RUN(bitwise);
-    RUN(shifts);
-    RUN(memory);
-    RUN(ports);
-    RUN(jump);
-    RUN(jump_then_execute);
-    RUN(backward_jump);
-    RUN(conditional_eq);
-    RUN(conditional_neq);
-    RUN(conditional_gt);
-    RUN(conditional_lt);
-    RUN(call_return);
-    RUN(nested_calls);
-    RUN(copy);
-    RUN(labels);
-    printf("==============\nAll tests passed.\n");
-    return 0;
+	printf("Glyph VM Tests\n==============\n");
+	RUN(arithmetic);
+	RUN(bitwise);
+	RUN(shifts);
+	RUN(memory);
+	RUN(ports);
+	RUN(stack);
+	RUN(jump);
+	RUN(backward_jump);
+	RUN(conditional_eq);
+	RUN(conditional_neq);
+	RUN(conditional_gt);
+	RUN(conditional_lt);
+	RUN(call_return);
+	RUN(nested_calls);
+	RUN(copy);
+	RUN(labels);
+	printf("==============\n");
+	return 0;
 }

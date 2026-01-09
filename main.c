@@ -1,22 +1,22 @@
 /*
  * Glyph Console Emulator
- * 
+ *
  * Minimal console device for bootstrapping a compiler.
- * 
+ *
  * Console Device:
  *   'C' (67)  - vector: callback address for input events
- *   'c' (99)  - read:   input character (set before callback)
+ *   'i' (99)  - read:   input character (set before callback)
  *   'o' (111) - write:  write byte to stdout
  *   'e' (101) - error:  write byte to stderr
- * 
+ *
  * System:
  *   'X' (88)  - exit:   exit with code
- * 
+ *
  * Input model (like UXN):
  *   1. Program runs to completion
- *   2. For each stdin char: set port['c'], call vector
+ *   2. For each stdin char: set prt['c'], call vector
  *   3. When stdin exhausted, exit normally
- * 
+ *
  * Usage: ./glyph <program.glyph> [args...]
  *        ./glyph -e "<code>"
  *        echo "input" | ./glyph program.glyph
@@ -27,12 +27,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Memory size: 64KB */
-#define MEM_SIZE 0x10000
+#define MEM_SIZE 0x40000
 
-/* Device ports */
+/* Device prts */
 #define CON_VECTOR  'C'   /* Console input vector */
-#define CON_READ    'c'   /* Input character */
+#define CON_READ    'i'   /* Input character */
 #define CON_WRITE   'o'   /* Write to stdout */
 #define CON_ERROR   'e'   /* Write to stderr */
 #define SYS_EXIT    'X'   /* Exit code */
@@ -40,31 +39,30 @@
 static Glyph vm;
 static u8 mem[MEM_SIZE];
 
-/* Resonance out: handle port writes */
-static void emu_emit(u8 port) {
-    switch (port) {
+/* Resonance out: handle prt writes */
+static void emu_emit(u8 prt) {
+    switch (prt) {
     case CON_WRITE:
-        putchar(vm.port[CON_WRITE] & 0xFF);
+        putchar(vm.prt[CON_WRITE] & 0xFF);
         fflush(stdout);
         break;
     case CON_ERROR:
-        fputc(vm.port[CON_ERROR] & 0xFF, stderr);
+        fputc(vm.prt[CON_ERROR] & 0xFF, stderr);
         fflush(stderr);
         break;
     case SYS_EXIT:
-        exit(vm.port[SYS_EXIT] & 0xFF);
+        exit(vm.prt[SYS_EXIT] & 0xFF);
         break;
     }
 }
 
-/* Resonance in: handle port reads */
-static void emu_sense(u8 port) {
-    switch (port) {
+/* Resonance in: handle prt reads */
+static void emu_sens(u8 prt) {
+    switch (prt) {
     case CON_READ: {
         int ch = getchar();
-        vm.port[CON_READ] = (ch == EOF) ? 0 : ch;
-        break;
-    }
+        vm.prt[CON_READ] = (ch == EOF) ? 0 : ch;
+    } break;
     }
 }
 
@@ -97,8 +95,7 @@ static void usage(const char *prog) {
     fprintf(stderr, "Usage: %s <program.glyph> [args...]\n", prog);
     fprintf(stderr, "       %s -e \"<code>\"\n\n", prog);
     fprintf(stderr, "Console Device:\n");
-    fprintf(stderr, "  'C' (67)  - vector: input callback address\n");
-    fprintf(stderr, "  'c' (99)  - read:   input character\n");
+    fprintf(stderr, "  'i' (99)  - read:   input character\n");
     fprintf(stderr, "  'o' (111) - write:  stdout\n");
     fprintf(stderr, "  'e' (101) - error:  stderr\n");
     fprintf(stderr, "\nSystem:\n");
@@ -112,9 +109,9 @@ int main(int argc, char **argv) {
     }
 
     /* Initialize VM */
-    glyph_init(&vm, mem, MEM_SIZE);
+    glyph_setup(&vm, mem, MEM_SIZE);
     vm.emit = emu_emit;
-    vm.sense = emu_sense;
+    vm.sens = emu_sens;
 
     /* Parse arguments */
     if (strcmp(argv[1], "-e") == 0) {
@@ -131,7 +128,6 @@ int main(int argc, char **argv) {
             return 1;
     }
 
-    glyph_run(&vm);
-
+    glyph_eval(&vm);
     return 0;
 }
